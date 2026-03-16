@@ -82,7 +82,7 @@ impl SkillsLoader {
                         args.skill_id, e
                     )));
                 }
-            },
+            }
         }
 
         // Workspace file absent — fall back to global
@@ -99,7 +99,7 @@ impl SkillsLoader {
                     "Skill '{}' could not be read",
                     args.skill_id
                 )))
-            },
+            }
         }
     }
 }
@@ -183,7 +183,7 @@ fn collect_skills_from(
                 let _ = log::warn(format!("readdir failed for {dir}: {e}"));
             }
             return;
-        },
+        }
     };
 
     let entry_names: Vec<String> = match serde_json::from_slice(&bytes) {
@@ -191,7 +191,7 @@ fn collect_skills_from(
         Err(e) => {
             let _ = log::warn(format!("parse dir entries failed for {dir}: {e}"));
             return;
-        },
+        }
     };
 
     for name in entry_names {
@@ -260,7 +260,7 @@ fn parse_frontmatter(content: &str) -> Option<SkillFrontmatter> {
             match key {
                 "name" => name = Some(val.to_string()),
                 "description" => description = Some(val.to_string()),
-                _ => {},
+                _ => {}
             }
         }
     }
