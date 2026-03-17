@@ -13,13 +13,5 @@ type = "executable"
 # and the capsule scans both workspace and global trees under that path.
 capabilities = { fs_read = ["workspace://", "global://"] }
 
-[[tool]]
-name = "list_skills"
-description = "List all available skills by parsing SKILL.md files in the skills directory."
-
-[[tool]]
-name = "read_skill"
-description = "Read the full content of a specific skill's SKILL.md file."
-
 [capabilities]
 ipc_publish = []
