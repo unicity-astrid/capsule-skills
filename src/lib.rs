@@ -46,8 +46,17 @@ pub struct ReadSkillArgs {
     pub skill_id: String,
 }
 
+/// Skill discovery and loading tools.
+///
+/// Skills are reusable prompt templates stored as SKILL.md files with YAML
+/// frontmatter (name, description). They live in workspace or global
+/// directories and are merged with workspace taking priority.
 #[capsule]
 impl SkillsLoader {
+    /// List all available skills in a directory. Scans both the workspace and
+    /// global (`~/.astrid/shared/`) directories, merging results. Returns a
+    /// JSON array of `{id, name, description}` objects. Workspace skills take
+    /// priority over global skills with the same ID.
     #[astrid::tool("list_skills")]
     pub fn list_skills(&self, args: ListSkillsArgs) -> Result<String, SysError> {
         let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
@@ -66,6 +75,9 @@ impl SkillsLoader {
         Ok(json)
     }
 
+    /// Read the full content of a specific skill by its ID. Returns the raw
+    /// SKILL.md content including frontmatter. Checks the workspace directory
+    /// first, then falls back to the global directory.
     #[astrid::tool("read_skill")]
     pub fn read_skill(&self, args: ReadSkillArgs) -> Result<String, SysError> {
         let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
