@@ -188,8 +188,8 @@ fn collect_skills_from(
     skills: &mut Vec<SkillInfo>,
     seen_ids: &mut std::collections::HashSet<String>,
 ) {
-    let bytes = match fs::read_dir(dir) {
-        Ok(b) => b,
+    let entries = match fs::read_dir(dir) {
+        Ok(rd) => rd,
         Err(e) => {
             if !is_not_found_error(&e) {
                 let _ = log::warn(format!("readdir failed for {dir}: {e}"));
@@ -198,15 +198,8 @@ fn collect_skills_from(
         }
     };
 
-    let entry_names: Vec<String> = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
-        Err(e) => {
-            let _ = log::warn(format!("parse dir entries failed for {dir}: {e}"));
-            return;
-        }
-    };
-
-    for name in entry_names {
+    for entry in entries {
+        let name = entry.file_name().to_string();
         if !is_safe_name(&name) || seen_ids.contains(&name) {
             continue;
         }
