@@ -30,8 +30,8 @@ struct SkillInfo {
 #[derive(Debug, Default, Deserialize, astrid_sdk::schemars::JsonSchema)]
 pub struct ListSkillsArgs {
     /// Directory containing the skills (e.g., ".gemini/skills").
-    /// The capsule will search both the workspace and the global
-    /// (`global://`) directory, merging results (workspace wins on
+    /// The capsule will search both the workspace and the principal's
+    /// home (`home://`) directory, merging results (workspace wins on
     /// duplicate skill IDs).
     pub dir_path: String,
 }
@@ -40,7 +40,7 @@ pub struct ListSkillsArgs {
 pub struct ReadSkillArgs {
     /// Directory containing the skills (e.g., ".gemini/skills").
     /// The capsule checks the workspace first, then falls back to
-    /// the global (`global://`) directory.
+    /// the principal's home (`home://`) directory.
     pub dir_path: String,
     /// The ID/folder name of the skill to read
     pub skill_id: String,
@@ -49,14 +49,14 @@ pub struct ReadSkillArgs {
 /// Skill discovery and loading tools.
 ///
 /// Skills are reusable prompt templates stored as SKILL.md files with YAML
-/// frontmatter (name, description). They live in workspace or global
+/// frontmatter (name, description). They live in workspace or home
 /// directories and are merged with workspace taking priority.
 #[capsule]
 impl SkillsLoader {
     /// List all available skills in a directory. Scans both the workspace and
-    /// global (`~/.astrid/shared/`) directories, merging results. Returns a
-    /// JSON array of `{id, name, description}` objects. Workspace skills take
-    /// priority over global skills with the same ID.
+    /// home (`~/.astrid/home/{principal}/`) directories, merging results.
+    /// Returns a JSON array of `{id, name, description}` objects. Workspace
+    /// skills take priority over home skills with the same ID.
     #[astrid::tool("list_skills")]
     pub fn list_skills(&self, args: ListSkillsArgs) -> Result<String, SysError> {
         let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
@@ -67,9 +67,9 @@ impl SkillsLoader {
         // Scan workspace first (takes priority on duplicate IDs)
         collect_skills_from(bare_dir, &mut skills, &mut seen_ids);
 
-        // Scan global directory (new skills only, no overrides)
-        let global_dir = format!("global://{bare_dir}");
-        collect_skills_from(&global_dir, &mut skills, &mut seen_ids);
+        // Scan home directory (new skills only, no overrides)
+        let home_dir = format!("home://{bare_dir}");
+        collect_skills_from(&home_dir, &mut skills, &mut seen_ids);
 
         let json = serde_json::to_string(&skills)?;
         Ok(json)
@@ -77,13 +77,13 @@ impl SkillsLoader {
 
     /// Read the full content of a specific skill by its ID. Returns the raw
     /// SKILL.md content including frontmatter. Checks the workspace directory
-    /// first, then falls back to the global directory.
+    /// first, then falls back to the home directory.
     #[astrid::tool("read_skill")]
     pub fn read_skill(&self, args: ReadSkillArgs) -> Result<String, SysError> {
         let bare_dir = bare_path(validate_dir_path(&args.dir_path)?);
         let skill_path = resolve_skill_path(bare_dir, &args.skill_id)?;
 
-        // Try workspace first — only fall back to global if the file is absent.
+        // Try workspace first — only fall back to home if the file is absent.
         // Permission errors or other I/O failures are surfaced immediately.
         match fs::read_to_string(&skill_path) {
             Ok(content) => return Ok(content),
@@ -97,10 +97,9 @@ impl SkillsLoader {
             }
         }
 
-        // Workspace file absent — fall back to global
-        let global_skill_path =
-            resolve_skill_path(&format!("global://{bare_dir}"), &args.skill_id)?;
-        match fs::read_to_string(&global_skill_path) {
+        // Workspace file absent — fall back to home
+        let home_skill_path = resolve_skill_path(&format!("home://{bare_dir}"), &args.skill_id)?;
+        match fs::read_to_string(&home_skill_path) {
             Ok(content) => Ok(content),
             Err(e) => {
                 let _ = log::log(
@@ -138,19 +137,19 @@ fn is_safe_name(name: &str) -> bool {
         && !name.contains('\0')
 }
 
-/// Strip any `global://` scheme prefix, returning the bare relative path.
+/// Strip the `home://` scheme prefix, returning the bare relative path.
 ///
 /// Caller must ensure `path` has been validated (e.g. via `validate_dir_path`)
-/// before calling — `bare_path("global://")` returns `""`.
+/// before calling — `bare_path("home://")` returns `""`.
 fn bare_path(path: &str) -> &str {
-    path.strip_prefix("global://").unwrap_or(path)
+    path.strip_prefix("home://").unwrap_or(path)
 }
 
 /// Validates `dir_path` and returns a cleaned version with trailing slashes removed.
-/// Allows the `global://` scheme prefix.
+/// Allows the `home://` scheme prefix.
 fn validate_dir_path(dir_path: &str) -> Result<&str, SysError> {
     // Strip scheme prefix for validation, then re-include it in the result
-    let path_to_check = dir_path.strip_prefix("global://").unwrap_or(dir_path);
+    let path_to_check = dir_path.strip_prefix("home://").unwrap_or(dir_path);
     if path_to_check.is_empty() {
         return Err(SysError::ApiError(
             "Invalid dir_path: path must not be empty".into(),
@@ -182,7 +181,7 @@ fn resolve_skill_path(dir_path: &str, skill_id: &str) -> Result<String, SysError
 }
 
 /// Scan a single directory for skills and append results. Skips silently
-/// if the directory doesn't exist (e.g. global skills dir not created yet).
+/// if the directory doesn't exist (e.g. home skills dir not created yet).
 fn collect_skills_from(
     dir: &str,
     skills: &mut Vec<SkillInfo>,
@@ -206,7 +205,7 @@ fn collect_skills_from(
         let skill_path = format!("{}/{}/SKILL.md", dir, name);
         if let Ok(content) = fs::read_to_string(&skill_path) {
             // Reserve the ID when SKILL.md exists — even if frontmatter is
-            // invalid — so a broken workspace skill blocks the global version
+            // invalid — so a broken workspace skill blocks the home version
             // (workspace wins). Directories without SKILL.md are not skills.
             seen_ids.insert(name.clone());
             if let Some(fm) = parse_frontmatter(&content) {
@@ -379,27 +378,24 @@ mod tests {
     }
 
     #[test]
-    fn test_bare_path_strips_global_prefix() {
-        assert_eq!(bare_path("global://skills"), "skills");
+    fn test_bare_path_strips_home_prefix() {
+        assert_eq!(bare_path("home://skills"), "skills");
         assert_eq!(bare_path("skills"), "skills");
-        assert_eq!(bare_path("global://"), "");
+        assert_eq!(bare_path("home://"), "");
         assert_eq!(bare_path(".gemini/skills"), ".gemini/skills");
     }
 
     #[test]
-    fn test_validate_dir_path_with_global_prefix() {
-        assert_eq!(
-            validate_dir_path("global://skills").unwrap(),
-            "global://skills"
-        );
-        assert!(validate_dir_path("global://../escape").is_err());
-        assert!(validate_dir_path("global://skills\0evil").is_err());
+    fn test_validate_dir_path_with_home_prefix() {
+        assert_eq!(validate_dir_path("home://skills").unwrap(), "home://skills");
+        assert!(validate_dir_path("home://../escape").is_err());
+        assert!(validate_dir_path("home://skills\0evil").is_err());
     }
 
     #[test]
     fn test_validate_dir_path_rejects_empty() {
         assert!(validate_dir_path("").is_err());
-        assert!(validate_dir_path("global://").is_err());
+        assert!(validate_dir_path("home://").is_err());
     }
 
     #[test]
@@ -410,8 +406,8 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_skill_path_with_global_prefix() {
-        let path = resolve_skill_path("global://skills", "my-skill").unwrap();
-        assert_eq!(path, "global://skills/my-skill/SKILL.md");
+    fn test_resolve_skill_path_with_home_prefix() {
+        let path = resolve_skill_path("home://skills", "my-skill").unwrap();
+        assert_eq!(path, "home://skills/my-skill/SKILL.md");
     }
 }
