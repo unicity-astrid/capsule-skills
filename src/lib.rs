@@ -6,6 +6,9 @@ use astrid_sdk::prelude::*;
 use astrid_sdk::schemars;
 use serde::{Deserialize, Serialize};
 
+/// URI scheme prefix for the principal's home directory.
+const HOME_SCHEME: &str = "home://";
+
 #[derive(Default)]
 pub struct SkillsLoader;
 
@@ -68,7 +71,7 @@ impl SkillsLoader {
         collect_skills_from(bare_dir, &mut skills, &mut seen_ids);
 
         // Scan home directory (new skills only, no overrides)
-        let home_dir = format!("home://{bare_dir}");
+        let home_dir = format!("{HOME_SCHEME}{bare_dir}");
         collect_skills_from(&home_dir, &mut skills, &mut seen_ids);
 
         let json = serde_json::to_string(&skills)?;
@@ -98,7 +101,8 @@ impl SkillsLoader {
         }
 
         // Workspace file absent — fall back to home
-        let home_skill_path = resolve_skill_path(&format!("home://{bare_dir}"), &args.skill_id)?;
+        let home_skill_path =
+            resolve_skill_path(&format!("{HOME_SCHEME}{bare_dir}"), &args.skill_id)?;
         match fs::read_to_string(&home_skill_path) {
             Ok(content) => Ok(content),
             Err(e) => {
@@ -142,14 +146,14 @@ fn is_safe_name(name: &str) -> bool {
 /// Caller must ensure `path` has been validated (e.g. via `validate_dir_path`)
 /// before calling — `bare_path("home://")` returns `""`.
 fn bare_path(path: &str) -> &str {
-    path.strip_prefix("home://").unwrap_or(path)
+    path.strip_prefix(HOME_SCHEME).unwrap_or(path)
 }
 
 /// Validates `dir_path` and returns a cleaned version with trailing slashes removed.
 /// Allows the `home://` scheme prefix.
 fn validate_dir_path(dir_path: &str) -> Result<&str, SysError> {
     // Strip scheme prefix for validation, then re-include it in the result
-    let path_to_check = dir_path.strip_prefix("home://").unwrap_or(dir_path);
+    let path_to_check = dir_path.strip_prefix(HOME_SCHEME).unwrap_or(dir_path);
     if path_to_check.is_empty() {
         return Err(SysError::ApiError(
             "Invalid dir_path: path must not be empty".into(),
