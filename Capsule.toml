@@ -15,11 +15,9 @@ capabilities = { fs_read = ["cwd://", "home://"] }
 
 [publish]
 "tool.v1.execute.*.result" = { wit = "@unicity-astrid/wit/types/tool-call-result" }
-# No canonical WIT type yet for tool describe responses.
-"tool.v1.response.describe.*" = { wit = "TODO" }
+"tool.v1.response.describe.*" = { wit = "@unicity-astrid/wit/tool/describe-response" }
 
 [subscribe]
 "tool.v1.execute.list_skills" = { wit = "@unicity-astrid/wit/types/tool-call", handler = "tool_execute_list_skills" }
 "tool.v1.execute.read_skill" = { wit = "@unicity-astrid/wit/types/tool-call", handler = "tool_execute_read_skill" }
-# No canonical WIT type yet for tool describe requests.
-"tool.v1.request.describe" = { wit = "TODO", handler = "tool_describe" }
+"tool.v1.request.describe" = { wit = "@unicity-astrid/wit/tool/describe-request", handler = "tool_describe" }
